@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>DuckID</title>
+        <link rel="stylesheet" href="/style.css">
+        <meta name="description" content="Log into DuckID to proceed to this page">
+    </head>
+    <body>
+        <h1>DuckID</h1>
+        <em>Your favorite way to authenticate.</em> | <a href="/">Main page</a> <a href="/deviceLogon">Device Logon</a> <b>Manage DuckID</b>
+        <hr>
+        <p>Create a DuckID account</p>
+        <a href="/register">Register</a>
+        <hr>
+        <p>Log in with WebAuthn (PADD)</p>
+        <button onclick="passkeys()">Log in</button>
+        <hr>
+        <p>Log in with Imagination (PQA)</p>
+        <div hidden id="keyless_auth_container">
+            <button onclick="imaginationAuthWithoutKey()" id="keyless_auth">Log in</button> or <button onclick="openKeyed()">Apply other quackpair</button>
+        </div>
+        <div hidden id="keyed_auth_container">
+            Public quack (SEND_TO_SERVER.key): <input type="file" id="pubkey"> <br>
+            Private quack (KEEP_SECRET.key): <input type="file" id="privkey"> <br>
+            <button onclick="imaginationAuth()" id="keyed_auth">Log in</button>
+        </div>
+        <hr>
+        <p>Log in with ShadowPass (USQA)</p>
+        <input id="shadowUsername" placeholder="Username">
+        <input type="password" id="shadowSecretQuack" placeholder="Secret quack">
+        <input id="usqatssq" placeholder="TSSQ (if present)">
+        <button onclick="shadowPassLogon()">Log in</button>
+        <hr>
+        <p>Log in with username and secret quack</p>
+        <input id="username" placeholder="Username">
+        <input type="password" id="secretQuack" placeholder="Secret quack">
+        <input id="tssq" placeholder="TSSQ (if present)">
+        <button onclick="usernameSQLogon()">Log in</button>
+        <script src="/imagination/Imagination.js"></script>
+        <script src="/imagination/gui.js"></script>
+        <script src="/authn.js"></script>
+        <script src="/tweetnacl.js"></script>
+        <script src="/secure-helper.js"></script>
+        <script>
+            function openOverlay() {
+                pubkey.disabled = true;
+                privkey.disabled = true;
+                try { keyless_auth.disabled = true; } catch {}
+                keyed_auth.disabled = true;
+            }
+            function closeOverlayWithError(err) {
+                pubkey.disabled = false;
+                privkey.disabled = false;
+                try { keyless_auth.disabled = false; } catch {}
+                keyed_auth.disabled = false;
+                if (err) alert("Logon failed:\n" + err.toString());
+            }
+
+            async function passkeys() {
+                let challengeCreate = await fetch("/api/passkeysChallenge");
+                challengeCreate = await challengeCreate.text();
+                let challengeSolution = await authenticateWebauthn(h2u8(challengeCreate));
+                let response = await fetch("/api/passkeysResponse", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        challenge: challengeCreate,
+                        credentialId: ab2h(challengeSolution.rawId),
+                        credentialIdB: challengeSolution.id,
+                        origin: location.origin,
+                        userHandle: ab2h(challengeSolution.response.userHandle),
+                        clientDataJSON: ab2h(challengeSolution.response.clientDataJSON),
+                        signature: ab2h(challengeSolution.response.signature),
+                        authenticatorData: ab2h(challengeSolution.response.authenticatorData)
+                    })
+                });
+                if (!response.ok) return alert("Failed to log in: " + response.status + " " + response.statusText + "\n\n" + (await response.text()));
+                document.cookie = "token=" + await response.text() + "; expires=" + new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString() + (location.protocol == "https:" ? "; secure" : "");
+                location.href = "/manage";
+            }
+
+            async function usernameSQLogon() {
+                let usernameField = document.getElementById("username");
+                usernameField.value = usernameField.value.trim();
+                if (usernameField.value == "") return alert("Please input an username!");
+                let fet = await fetch("/api/secretQuackLogin", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        username: usernameField.value,
+                        secretQuack: secretQuack.value,
+                        tssq: tssq.value
+                    }),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                });
+                if (fet.ok) {
+                    document.cookie = "token=" + await fet.text() + "; expires=" + new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString() + (location.protocol == "https:" ? "; secure" : "");
+                    location.href = "/manage";
+                } else alert("Failed to log in: " + fet.status + " " + fet.statusText + "\n\n" + (await fet.text()));
+            }
+
+            async function shadowPassLogon() {
+                let usernameField = document.getElementById("shadowUsername");
+                usernameField.value = usernameField.value.trim();
+                if (usernameField.value == "") return alert("Please input an username!");
+                let shadowChall = await fetch("/api/shadowPassChallenge");
+                shadowChall = await shadowChall.text();
+                shadowSecretQuack.dataset.challenge = shadowChall;
+                let ab2h = (buffer) => Array.from(new Uint8Array(buffer)).map(a => a.toString(16).padStart(2, "0")).join("");
+                let fet = await fetch("/api/shadowPassLogin", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        username: usernameField.value,
+                        response: ab2h(await shadowSecretQuack.secureValue()),
+                        tssq: usqatssq.value,
+                        challenge: shadowChall
+                    }),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                });
+                if (fet.ok) {
+                    document.cookie = "token=" + await fet.text() + "; expires=" + new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString() + (location.protocol == "https:" ? "; secure" : "");
+                    location.href = "/manage";
+                } else alert("Failed to log in: " + fet.status + " " + fet.statusText + "\n\n" + (await fet.text()));
+            }
+
+            function imaginationAuthWithoutKey() {
+                imagination.gui.imaginationAuthGUI([], openOverlay, prompt, closeOverlayWithError, localStorage);
+            }
+
+            function imaginationAuth() {
+                imagination.gui.imaginationAuthGUI([pubkey.files[0], privkey.files[0]], openOverlay, prompt, closeOverlayWithError, localStorage);
+            }
+
+            function openKeyed() {
+                keyless_auth_container.remove();
+                keyed_auth_container.hidden = false;
+            }
+
+            if (imagination.gui.isKeySaved()) keyless_auth_container.hidden = false;
+            else keyed_auth_container.hidden = false;
+        </script>
+    </body>
+</html>

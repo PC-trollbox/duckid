@@ -1,0 +1,62 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.center {
+    text-align: center;
+    padding: 8px;
+    box-shadow: 8px 8px 8px 8px rgba(0, 0, 0, 0.2);
+    width: fit-content;
+    left: 50%;
+    position: relative;
+    transform: translate(-50%);
+    border-radius: 4px;
+}
+
+.keyside {
+    display: flex;
+}
+
+.titleside {
+    flex: 1;
+}
+
+body.dev {
+    background-color: #2a2a2a;
+    color: white;
+}
+
+body.dev a {
+    color: deepskyblue;
+}
+
+body.dev textarea {
+    background: #2b2a33;
+    color: white;
+}
+
+body.dev input {
+    background: #2b2a33;
+    color: white;
+}
+
+@media (prefers-color-scheme: dark) {
+    body {
+        background-color: #2a2a2a;
+        color: white;
+    }
+    
+    a {
+        color: deepskyblue;
+    }
+    
+    textarea {
+        background: #2b2a33;
+        color: white;
+    }
+    
+    input {
+        background: #2b2a33;
+        color: white;
+    }
+}

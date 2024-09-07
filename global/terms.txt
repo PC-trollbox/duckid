@@ -1,0 +1,10 @@
+secret quack - password
+tsq - temporary secret quack - session token
+dsq - development secret quack - developer token
+tssq - time-sensitive secret quack - totp
+padd - personal access duck device - hardware key
+rsq - recovery secret quack - recovery key/code
+pqa - public quack authentication - public key authentication
+private quack - private key
+public quack - public key
+usqa - unrevealed secret quack authentication - zero-knowledge password proof

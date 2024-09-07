@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>App Example</title>
+    </head>
+    <body>
+        <b>Welcome to DuckID Testing App!</b>
+        <br>
+        <div id="logonFlow">
+            <span id="statusMessage">To get this over with, just scan the QR below and log in:</span>
+            <br>
+            <img id="qrcode" width="256" height="256">
+        </div>
+        <div id="logonStatus" hidden>
+            You're <span id="your"></span>.
+            <br>
+            Random data stored: <span id="data"></span>
+            <hr>
+            <em id="hint" hidden>Press Enter to log out</em>
+        </div>
+        <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
+        <script>
+            let locOrigin = location.origin;
+            let appID = "8c928f17371d13baab78524d94d9c5c32dfe4dd142e03700a4af943ec0002d407ae11a8e220ba0eeafc75611a04b78ce2ae4bb70a1551c7e4f4d87eb44116b59";
+            let api0URL = new URL(locOrigin);
+            let api1URL = new URL(locOrigin);
+            let api2URL = new URL(locOrigin);
+            let qrURL = new URL(locOrigin);
+            api0URL.pathname = "/api/serviceLogonSession";
+            api1URL.pathname = "/api/serviceLogonGet";
+            api2URL.pathname = "/api/data";
+            qrURL.pathname = "/serviceLogon";
+
+            async function runLogonSession() {
+                let result = await fetch(api0URL.toString(), {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        dsq: "c4698f2a28c64dba6dc36cae315cafc617ee409357160f4d3c39eec6967aa6a8dfd241d010a2c7c57f811901c4a5670766c8227404faa5335e2ff5f9112bb975",
+                        app: appID
+                    })
+                });
+                if (!result.ok) {
+                    statusMessage.innerText = "We encountered an error. The code below provides diagnostic information.";
+                    let qr = qrcode(4, "L");
+                    qr.addData(await result.text());
+                    qr.make();
+                    document.getElementById("qrcode").src = qr.createDataURL();
+                    return;
+                }
+                result = await result.json();
+                let int = setInterval(async function() {
+                    let check = await checkLogon("pri" + result.private);
+                    if (check.finished) {
+                        clearInterval(int);
+                        if (!check.logonInfo.user) return runLogonSession();
+                        logonFlow.hidden = true;
+                        logonStatus.hidden = false;
+                        your.innerText = check.logonInfo.user;
+                        let tokenCookieExtract = document.cookie.match(/token=[0-9a-f]+/) || "";
+                        if (tokenCookieExtract) tokenCookieExtract = tokenCookieExtract[0];
+                        document.cookie = "token=" + check.logonInfo.appToken;
+                        api2URL.searchParams.append("app", appID);
+                        let dataStorage = await fetch(api2URL.toString());
+                        dataStorage = await dataStorage.json();
+                        dataStorage.prev = dataStorage.prev || Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(16);
+                        data.innerText = dataStorage.prev;
+                        let dataStorageSet = await fetch(api2URL.toString(), {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                data: dataStorage,
+                                app: appID
+                            })
+                        })
+                        document.cookie = tokenCookieExtract;
+                        onkeydown = function(e) {
+                            if (e.key == "Enter") {
+                                location.reload();
+                            }
+                        }
+                        hint.hidden = false;
+                    }
+                }, 10000);
+                qrURL.searchParams.append("code", result.public);
+                let qr = qrcode(8, "L");
+                qr.addData(qrURL.toString());
+                qr.make();
+                document.getElementById("qrcode").src = qr.createDataURL();
+                return result;
+            }
+
+            async function checkLogon(code) {
+                let result = await fetch(api1URL.toString(), {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        deviceCode: code
+                    })
+                });
+                result = await result.json();
+                return result;
+            }
+
+            runLogonSession();
+        </script>
+    </body>
+</html>

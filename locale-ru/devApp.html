@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>DuckID для Разработки</title>
+        <link rel="stylesheet" href="/style.css">
+        <meta name="description" content="Разрабатывайте приложения в DuckID">
+    </head>
+    <body class="dev">
+        <h1>Приложения DuckID</h1>
+        <em>Твой любимый способ аутентификации.</em> | <a href="/">Главная страница</a> <a href="/deviceLogon">Вход для устройства</a> <a href="/manage"><b>Управление DuckID</b></a> <a href="/logout">Выйти из системы</a>
+        <hr>
+        <button onclick="addApp()">Добавить приложение</button>
+        <hr>
+        <div id="appList"></div>
+        <hr>
+        <em>После того, как вы подтвердили СКР, он больше не доступен для просмотра. Сгенерируйте новый СКР, если вам нужно просмотреть другой (это отменит действие предыдущего СКР).</em>
+        <script>
+            async function refreshAppList() {
+                let appList = document.getElementById("appList");
+                appList.innerHTML = "";
+                let apps = await fetch("/api/devApp");
+                apps = await apps.json();
+                for (let appId in apps) {
+                    let appDiv = document.createElement("div");
+                    let name = document.createElement("span");
+                    let vfid = document.createElement("button");
+                    let toggle = document.createElement("button");
+                    let rotate = document.createElement("button");
+                    let rename = document.createElement("button");
+                    let remove = document.createElement("button");
+
+                    name.innerText = apps[appId].name + " (" + appId.length + "_" + appId.slice(0, 8) + ") | " + (apps[appId].disabled ? "Отключено" : "Включено");
+
+                    vfid.title = "Просмотреть полный ID";
+                    vfid.innerText = "id";
+                    toggle.innerText = "d*";
+                    toggle.title = "Включить или выключить приложение";
+                    rotate.innerText = "sq*";
+                    rotate.title = "Сгенерировать СКР";
+                    rename.innerText = "nm*";
+                    rename.title = "Переименовать";
+                    remove.innerText = "x";
+
+                    appDiv.className = "keyside";
+                    name.className = "titleside";
+
+                    vfid.onclick = async function() {
+                        return prompt("Полный ID", appId);
+                    }
+
+                    toggle.onclick = async function() {
+                        if (!confirm("Вы действительно хотите переключить это приложение? Если вы выключите приложение, оно временно потеряет доступ к своим ресурсам DuckID.")) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/devApps/toggle", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: appId,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Не удалось переключить приложение: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshAppList();
+                    }
+
+                    rotate.onclick = async function() {
+                        if (!confirm("Вы действительно хотите регенерировать СКР? Предыдущим СКР больше не будет возможно создать новые запросы входа в сервис.")) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/devApps/rotate", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: appId,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Не удалось регенерировать СКР: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        prompt("Запишите новый СКР:", await result.text());
+                        refreshAppList();
+                    }
+
+                    rename.onclick = async function() {
+                        let newname = prompt("Введите новое имя приложение. Используйте здравый смысл.", apps[appId].name);
+                        if (!newname) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/devApps/rename", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: appId,
+                                name: newname,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Не удалось переименовать приложение: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshAppList();
+                    }
+
+                    remove.onclick = async function() {
+                        if (!confirm("Вы действительно хотите удалить это приложение? Если вы удалите приложение, оно потеряет доступ к его ресурсам DuckID навсегда, а создание нового приложениия с тем же именем не восстановит доступ к этим ресурсам.")) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/devApps/remove", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: appId,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Не удалось удалить приложение: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshAppList();
+                    }
+
+                    appDiv.appendChild(name);
+                    appDiv.appendChild(vfid);
+                    appDiv.appendChild(toggle);
+                    appDiv.appendChild(rotate);
+                    appDiv.appendChild(rename);
+                    appDiv.appendChild(remove);
+                    appList.appendChild(appDiv);
+                }
+            }
+
+            async function addApp() {
+                let name = prompt("Введите имя приложения");
+                if (!name) return;
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let result = await fetch("/api/devApp/new", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        confirmBodyReadable
+                    })
+                });
+                if (!result.ok) return alert("Не удалось создать приложение: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                prompt("Запишите новый Секретный Кряк Разработки (СКР):", await result.text());
+                refreshAppList();
+            }
+            refreshAppList();
+        </script>
+    </body>
+</html>

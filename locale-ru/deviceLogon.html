@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>DuckID - Вход для устройства</title>
+        <link rel="stylesheet" href="/style.css">
+        <meta name="description" content="Войти в устройство, использующее DuckID">
+    </head>
+    <body>
+        <h1>DuckID</h1>
+        <em>Твой любимый способ аутентификации.</em> | <a href="/">Главная страница</a> <b>Вход для устройства</b> <a href="/manage">Управление DuckID</a>
+        <hr>
+        <div class="center">
+            <span>Введите код на встроенном устройстве ниже.</span> <br>
+            <input type="text" id="deviceCode" placeholder="Код устройства"> <button id="deviceCodeSubmit" onclick="openDeviceCode();">Открыть</button> <br>
+            <b>Не вводите коды из источников, которым вы не доверяете!</b>
+        </div>
+        <script>
+            function openDeviceCode() {
+                location.href = "/serviceLogon?code=" + encodeURIComponent(document.getElementById("deviceCode").value);
+            }
+        </script>
+    </body>
+</html>

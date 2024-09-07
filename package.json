@@ -1,0 +1,20 @@
+{
+  "name": "duckid",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "base32": "^0.0.7",
+    "cbor-web": "^9.0.2",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "fido2-lib": "^3.5.3",
+    "tweetnacl": "^1.0.3"
+  }
+}

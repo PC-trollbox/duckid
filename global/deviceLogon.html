@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>DuckID - Device Logon</title>
+        <link rel="stylesheet" href="/style.css">
+        <meta name="description" content="Log into a device using DuckID">
+    </head>
+    <body>
+        <h1>DuckID</h1>
+        <em>Your favorite way to authenticate.</em> | <a href="/">Main page</a> <b>Device Logon</b> <a href="/manage">Manage DuckID</a>
+        <hr>
+        <div class="center">
+            <span>Enter the code on the embedded device here.</span> <br>
+            <input type="text" id="deviceCode" placeholder="Device code"> <button id="deviceCodeSubmit" onclick="openDeviceCode();">Submit</button> <br>
+            <b>Do not input codes from sources you do not trust!</b>
+        </div>
+        <script>
+            function openDeviceCode() {
+                location.href = "/serviceLogon?code=" + encodeURIComponent(document.getElementById("deviceCode").value);
+            }
+        </script>
+    </body>
+</html>

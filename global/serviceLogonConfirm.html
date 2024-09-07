@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>DuckID - Logon Confirmation</title>
+        <link rel="stylesheet" href="/style.css">
+        <meta name="description" content="Confirm logging into an app.">
+    </head>
+    <body>
+        <h1>DuckID</h1>
+        <em>Your favorite way to authenticate.</em> | <a href="/">Main page</a> <b>Device Logon</b> <a href="/manage">Manage DuckID</a>
+        <hr>
+        <div class="center">
+            <span>Would you really like to log into <em id="appName"></em> developed by <em id="appDeveloper"></em>?</span> <br>
+            <span>The IP address of the device is <em id="ip"></em>.</span> <br>
+            <span>After logging in, you will be redirected to <em id="domain"></em>.</span> <br>
+            <button id="logonConfirm">Log on</button> <button id="logonDeny">Deny</button>
+        </div>
+        <script>
+            (async function() {
+                let code = new URL(location).searchParams.get("code");
+                if (!code) {
+                    location.href = "/serviceLogonFailed";
+                    return;
+                }
+                let response = await fetch("/api/serviceLogonGet", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        deviceCode: "pub" + code
+                    })
+                });
+                if (!response.ok) {
+                    location.href = "/serviceLogonFailed";
+                    return;
+                }
+                response = await response.json();
+
+                document.getElementById("appName").innerText = response.application.name;
+                document.getElementById("appName").onclick = function() {
+                    return prompt("Full app ID", response.application.id);
+                }
+                document.getElementById("appDeveloper").innerText = response.application.dev;
+                document.getElementById("appDeveloper").onclick = function() {
+                    let devNameCmp = prompt("Please input the developer name you expect below.");
+                    if (!devNameCmp) return;
+                    if (devNameCmp == response.application.dev) return alert("These developers should be the same.");
+                    alert("These developers are not the same. Danger ahead!");
+                }
+                document.getElementById("ip").innerText = response.ip;
+                document.getElementById("domain").innerText = new URL(response.redirectURL).host;
+                document.getElementById("domain").onclick = function() {
+                    return prompt("Full redirect URL", response.redirectURL);
+                }
+
+                document.getElementById("logonConfirm").onclick = () => logonAction("allow");
+                document.getElementById("logonDeny").onclick = () => logonAction("deny");
+
+                async function logonAction(action) {
+                    let result = await fetch("/api/serviceLogon/action", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            deviceCode: code,
+                            action
+                        })
+                    });
+                    if (!result.ok) {
+                        location.href = "/serviceLogonFailed";
+                        return;
+                    }
+                    if (action == "deny") return location.href = "/serviceLogonCancelled";
+                    location.href = response.redirectURL;
+                }
+            })();
+        </script>
+    </body>
+</html>

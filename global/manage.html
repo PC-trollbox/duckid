@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>DuckID</title>
+        <link rel="stylesheet" href="/style.css">
+        <meta name="description" content="Manage your DuckID apps and security">
+    </head>
+    <body>
+        <h1>DuckID</h1>
+        <em>Your favorite way to authenticate.</em> | <a href="/">Main page</a> <a href="/deviceLogon">Device Logon</a> <b>Manage DuckID</b> <a href="/logout">Log out</a>
+        <hr>
+        <p>Hi <code id="usernameHtml"></code>!</p>
+        <h2>Applications</h2>
+        <a href="/devApp">Developer portal</a> <a href="#security">Skip to security section</a> <br>
+        <em>Applications cannot change or read your security settings.</em>
+        <br>
+        <div id="appList"></div>
+        <h2 id="security">Security</h2>
+        <h3>General</h3>
+        <button onclick="rotateManageToken()">Log out of all other managing devices</button>
+        <button onclick="rotateRecoveryToken()">Generate new recovery secret quack</button>
+        <button onclick="lockAccount()"><b>Lock DuckID account</b></button>
+        <button onclick="stopUsingAccount()"><b>Delete DuckID account</b></button>
+        <hr>
+        <h3>PADDs</h3>
+        <button onclick="newPADD()">New PADD</button> <a href="#pqa">Skip to PQA subsection</a>
+        <div id="paddKeys"></div>
+        <hr>
+        <h3 id="pqa">PQA</h3>
+        <button onclick="changeKeypair()">Change keypair</button>
+        <button onclick="imagination.gui.backupKeys([], prompt, confirm('Decrypt the keypair?'))">Export keypair</button>
+        <button onclick="imagination.gui.imaginationSavedEncrypt([], ()=>{}, prompt, confirm, (a)=>a?alert(a):undefined)">Lock (encrypt) keypair</button>
+        <button onclick="stopUsingPQA()"><b>Terminate PQA usage</b></button>
+        <hr>
+        <h3>USQA</h3>
+        <input id="usqaSecretQuack" placeholder="Secret quack" type="password">
+        <button onclick="usqaSecretQuackChange()" id="usqaSecretQuackChange">Change</button> <br>
+        <button onclick="stopUsingUSQA()"><b>Terminate USQA usage</b></button>
+        <hr>
+        <h3>SQA</h3>
+        <input id="secretQuack" placeholder="Secret quack" type="password">
+        <button onclick="secretQuackChange()" id="secretQuackChange">Change</button> <br>
+        <button onclick="stopUsingSQ()"><b>Terminate SQA usage</b></button>
+        <hr>
+        <h4>(U)SQA/TSSQ (Time-Sensitive Secret Quack)</h4>
+        <button onclick="toggleTSSQ()">Toggle TSSQ</button>
+        <script src="/imagination/Imagination.js"></script>
+        <script src="/imagination/gui.js"></script>
+        <script src="/authn.js"></script>
+        <script src="/cbor-web.js"></script>
+        <script src="/base32.js"></script>
+        <script src="/tweetnacl.js"></script>
+        <script src="/secure-helper.js"></script>
+        <script>
+            let username;
+
+            async function refreshApps() {
+                let appList = document.getElementById("appList");
+                appList.innerHTML = "";
+                let apps = await fetch("/api/apps");
+                apps = await apps.json();
+                for (let app in apps) {
+                    let appHTML = document.createElement("div");
+                    let name = document.createElement("span");
+                    let vfid = document.createElement("button");
+                    let remove = document.createElement("button");
+
+                    name.innerText = apps[app].name + " (" + app.length + "_" + app.slice(0, 8) + ") | " + bytesToString(apps[app].size);
+                    vfid.title = "View full ID";
+                    vfid.innerText = "id";
+                    remove.title = "Remove app for you";
+                    remove.innerText = "x";
+
+                    appHTML.className = "keyside";
+                    name.className = "titleside";
+
+                    vfid.onclick = async function() {
+                        return prompt("Full ID", app);
+                    }
+
+                    remove.onclick = async function() {
+                        if (!confirm("Are you sure you want to remove this app?")) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/apps/remove", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                app,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Failed to remove app: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshApps();
+                    }
+                    appHTML.appendChild(name);
+                    appHTML.appendChild(vfid);
+                    appHTML.appendChild(remove);
+                    appList.appendChild(appHTML);
+                }
+            }
+            async function refreshPADD() {
+                username = await fetch("/api/username");
+                username = await username.text();
+                document.getElementById("usernameHtml").innerText = username;
+                let keys = document.getElementById("paddKeys");
+                keys.innerHTML = "";
+                let passkeys = await fetch("/api/passkeys");
+                passkeys = await passkeys.json();
+                for (let passkey in passkeys) {
+                    let key = document.createElement("div");
+                    let name = document.createElement("span");
+                    let rename = document.createElement("button");
+                    let remove = document.createElement("button");
+
+                    name.innerText = passkeys[passkey].name + " (" + passkey.length + "_" + passkey.slice(0, 8) + ") | " + (passkeys[passkey].backupEligible ? "Synchronized" : "Stored locally (" + passkeys[passkey].counter + ")");
+                    rename.title = "Rename PADD";
+                    rename.innerText = "*";
+                    remove.title = "Remove PADD";
+                    remove.innerText = "x";
+
+                    key.className = "keyside";
+                    name.className = "titleside";
+
+                    rename.onclick = async function() {
+                        let newname = prompt("Enter a new PADD name. Use common sense.", passkeys[passkey].name);
+                        if (!newname) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/passkey/rename", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: passkey,
+                                name: newname,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Failed to rename PADD: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshPADD();
+                    }
+
+                    remove.onclick = async function() {
+                        if (!confirm("Are you sure you want to remove this PADD?")) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/passkey/remove", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: passkey,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Failed to remove PADD: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshPADD();
+                    }
+                    key.appendChild(name);
+                    key.appendChild(rename);
+                    key.appendChild(remove);
+                    keys.appendChild(key);
+                }
+            }
+            async function newPADD() {
+                if (!username) {
+                    username = await fetch("/api/username");
+                    username = await username.text();
+                }
+                let name = prompt("Enter a name for your PADD. Use common sense.");
+                if (!name) return;
+                let registration = await registerWebauthn(username);
+                if (!registration) return;
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                registration.publicKey = ab2h(registration.publicKey);
+                registration.credentialId = ab2h(registration.credentialId);
+                let registrationResult = await fetch("/api/passkey/add", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        registration: registration,
+                        confirmBodyReadable
+                    })
+                });
+                if (!registrationResult.ok) return alert("Failed to link PADD: " + registrationResult.status + " " + registrationResult.statusText + "\n\n" + (await registrationResult.text()));
+                refreshPADD();
+            }
+
+            async function changeKeypair() {
+                let newkeypair = await imagination.gui.imaginationPubkeyFrontend(() => {}, () => {}, localStorage);
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/changeKeypair", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        pubkey: newkeypair.publicKeyPem,
+                        confirmBodyReadable: confirmBodyReadable
+                    }),
+                    headers: {
+                        "Content-Type": "application/json",
+                    }
+                });
+                if (fet.ok) {
+                    await imagination.gui.backupKeys([], prompt, false, localStorage);
+                    alert("Save the keys, then click OK.");
+                    location.reload();
+                } else alert("Failed to change your keypair: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+            }
+
+            async function stopUsingPQA() {
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/terminatePQA?cbr=" + encodeURIComponent(confirmBodyReadable));
+                if (!fet.ok) return alert("Failed to terminate PQA: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                alert("PQA is now terminated. Use the 'Change keypair' tool to start it again.");
+            }
+
+            async function secretQuackChange() {
+                if (!secretQuack.value) return alert("Please input a SQ!");
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/secretQuackChange", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        secretQuack: secretQuack.value,
+                        confirmBodyReadable
+                    }),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                });
+                if (!fet.ok) return alert("Failed to change SQ because: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                location.href = "/login";
+            }
+
+            async function usqaSecretQuackChange() {
+                if (!usqaSecretQuack.value) return alert("Please input a SQ!");
+                let ab2h = (buffer) => Array.from(new Uint8Array(buffer)).map(a => a.toString(16).padStart(2, "0")).join("");
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/shadowPassChange", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        pubkey: ab2h(await usqaSecretQuack.secureValue()),
+                        confirmBodyReadable
+                    }),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                });
+                if (!fet.ok) return alert("Failed to change USQA SQ because: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                location.href = "/login";
+            }
+
+            async function stopUsingSQ() {
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/terminateSQ?cbr=" + encodeURIComponent(confirmBodyReadable));
+                if (!fet.ok) return alert("Failed to terminate SQ: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                alert("SQ is now terminated. Change it to start it again.");
+            }
+
+            async function stopUsingUSQA() {
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/terminateUSQA?cbr=" + encodeURIComponent(confirmBodyReadable));
+                if (!fet.ok) return alert("Failed to terminate USQA: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                alert("USQA is now terminated. Change it to start it again.");
+            }
+
+            async function rotateManageToken() {
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/rotateManageToken?cbr=" + encodeURIComponent(confirmBodyReadable));
+                if (!fet.ok) return alert("Failed to rotate manage token: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                location.href = "/login";
+            }
+            
+            async function rotateRecoveryToken() {
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/rotateRecoveryToken?cbr=" + encodeURIComponent(confirmBodyReadable));
+                if (!fet.ok) return alert("Failed to rotate recovery token: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                prompt("Write down the recovery token:", await fet.text());
+            }
+
+            async function toggleTSSQ() {
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/toggleTSSQ?cbr=" + encodeURIComponent(confirmBodyReadable));
+                if (!fet.ok) return alert("Failed to toggle TSSQ: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                fet = await fet.text();
+                if (fet == "disabled") return alert("TSSQ is now disabled. Use this tool again to enable it.");
+                let hexToU8A = (hex) => Uint8Array.from(hex.match(/.{1,2}/g).map(a => parseInt(a, 16)));
+                let b32 = base32.encode(hexToU8A(fet));
+                prompt("Authenticator setup. Please save this output. Hex and base32 (base32 is used in google authenticator), separated by space: " + fet + " " + b32, fet + " " + b32);
+            }
+
+            async function lockAccount() {
+                if (!confirm("Are you sure you want to lock your account? Your data will remain. If you have created applications that contained data on user accounts, that data will temporarily be inaccessible, but still remain on the accounts.")) return;
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/lockAccount", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        confirmBodyReadable
+                    })
+                });
+                if (!fet.ok) return alert("Failed to lock account: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                alert("The account is now disabled.");
+                location.href = "/login";
+            }
+
+            async function stopUsingAccount() {
+                if (!confirm("Are you sure you want to delete your account? All of your data will be lost. If you have created applications that contained data on user accounts, that data will remain to make removal processes faster, but will be inaccessible.")) return;
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let fet = await fetch("/api/deleteAccount", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        confirmBodyReadable
+                    })
+                });
+                if (!fet.ok) return alert("Failed to delete account: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                alert("The account is now removed.");
+                location.href = "/login";
+            }
+
+            function bytesToString(bytes, majorUnitsOnly) {
+                let string = "";
+                let tb = Math.floor(bytes / (1024 * 1024 * 1024 * 1024));
+                let gb = Math.floor(bytes / (1024 * 1024 * 1024)) % 1024;
+                let mb = Math.floor(bytes / (1024 * 1024)) % 1024;
+                let kb = Math.floor(bytes / 1024) % 1024;
+                let b = bytes % 1024;
+                if (mb) string = string + mb + "MB" + " ";
+                if (mb && majorUnitsOnly) return string;
+                if (kb) string = string + kb + "KB" + " ";
+                if (kb && majorUnitsOnly) return string;
+                if (b) string = string + b + "B";
+                if (b && majorUnitsOnly) return string;
+                return string;
+            }
+
+            refreshPADD();
+            refreshApps();
+        </script>
+    </body>
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>DuckID</title>
+        <link rel="stylesheet" href="/style.css">
+        <meta name="description" content="Зарегистрируйте учётную запись в DuckID">
+    </head>
+    <body>
+        <h1>DuckID</h1>
+        <em>Твой любимый способ аутентификации.</em> | <a href="/">Главная страница</a> <a href="/deviceLogon">Вход для устройства</a> <b>Управление DuckID</b>
+        <hr>
+        <p>Войти с помощью У/З DuckID</p>
+        <a href="/login">Войти</a>
+        <hr>
+        <p>Введите ваше имя пользователя:</p>
+        Имя пользователя: <input id="username" placeholder="Имя пользователя">
+        <hr>
+        <p>Выберите метод входа:</p>
+        <hr>
+        <p>Создать У/З через WebAuthn (утиное устройство персонального доступа)</p>
+        <button onclick="passkeysRegister()" id="passkeys_register">Зарегистрироваться</button>
+        <hr>
+        <p>Создать У/З через Imagination (аутентификация открытого кряка)</p>
+        <button onclick="imaginationRegister()" id="imagination_register">Зарегистрироваться</button>
+        <hr>
+        <p>Создать У/З через ShadowPass (аутентификация секретного нераскрытого кряка)</p>
+        <input type="password" id="shadowSecretQuack" placeholder="Секретный кряк">
+        <button onclick="shadowPassRegister()" id="shadowPassRegister">Зарегистрироваться</button> <br>
+        <b>Если вы используете этот метод, НИКОГДА не используйте один и тот же секретный кряк на других сервисах. Это может подвергнуть риску ваш У/З DuckID.</b>
+        <hr>
+        <p>Создать У/З с помощью секретного кряка</p>
+        <input type="password" id="secretQuack" placeholder="Секретный кряк">
+        <button onclick="usernameSQRegister()" id="secretQuackRegister">Зарегистрироваться</button> <br>
+        <em>Создание схемы Временно-Зависимого Секретного Кряка будет возможно после регистрации.</em>
+        <script src="/imagination/Imagination.js"></script>
+        <script src="/imagination/gui.js"></script>
+        <script src="/authn.js"></script>
+        <script src="/cbor-web.js"></script>
+
+        <script src="/tweetnacl.js"></script>
+        <script src="/secure-helper.js"></script>
+        <script>
+            function openOverlay() {
+                username.disabled = true;
+                passkeys_register.disabled = true;
+                imagination_register.disabled = true;
+                secretQuack.disabled = true;
+                secretQuackRegister.disabled = true;
+            }
+            function closeOverlayWithError(err) {
+                username.disabled = false;
+                passkeys_register.disabled = false;
+                imagination_register.disabled = false;
+                secretQuack.disabled = false;
+                secretQuackRegister.disabled = false;
+                if (err) alert("Вход не удался:\n" + err.toString());
+            }
+
+            async function passkeysRegister() {
+                let usernameField = document.getElementById("username");
+                usernameField.value = usernameField.value.trim();
+                if (usernameField.value == "") return alert("Введите имя пользователя!");
+                openOverlay();
+                let registration = await registerWebauthn(usernameField.value);
+                if (!registration) return closeOverlayWithError();
+                registration.publicKey = ab2h(registration.publicKey);
+                registration.credentialId = ab2h(registration.credentialId);
+                let registrationResult = await fetch("/api/passkeysRegistration", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        username: usernameField.value,
+                        registration: registration
+                    })
+                });
+                closeOverlayWithError(registrationResult.ok ? undefined : "Не удалось зарегистрироваться: " + registrationResult.status + " " + registrationResult.statusText + "\n\n" + (await registrationResult.text()));
+                if (registrationResult.ok) location.href = "/logon";
+            }
+
+            async function imaginationRegister() {
+                let usernameField = document.getElementById("username");
+                usernameField.value = usernameField.value.trim();
+                if (usernameField.value == "") return alert("Введите имя пользователя!");
+                let newkeypair = await imagination.gui.imaginationPubkeyFrontend(openOverlay, closeOverlayWithError, localStorage);
+                openOverlay();
+                let fet = await fetch("/imagination/register", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        pubkey: newkeypair.publicKeyPem,
+                        username: usernameField.value,
+                    }),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                });
+                closeOverlayWithError(fet.ok ? undefined : "Не удалось зарегистрироваться потому что: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                if (fet.ok) location.href = "/login";
+            }
+
+            async function usernameSQRegister() {
+                let usernameField = document.getElementById("username");
+                usernameField.value = usernameField.value.trim();
+                if (usernameField.value == "") return alert("Введите имя пользователя!");
+                if (!secretQuack.value) return alert("Введите секретный кряк!");
+                openOverlay();
+                let fet = await fetch("/api/secretQuackRegister", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        username: usernameField.value,
+                        secretQuack: secretQuack.value
+                    }),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                });
+                closeOverlayWithError(fet.ok ? undefined : "Не удалось зарегистрироваться потому что: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                if (fet.ok) location.href = "/login";
+            }
+
+            async function shadowPassRegister() {
+                let usernameField = document.getElementById("username");
+                usernameField.value = usernameField.value.trim();
+                if (usernameField.value == "") return alert("Введите имя пользователя!");
+                if (!shadowSecretQuack.value) return alert("Введите секретный кряк!");
+                openOverlay();
+                let pubkey = await shadowSecretQuack.secureValue();
+                let ab2h = (buffer) => Array.from(new Uint8Array(buffer)).map(a => a.toString(16).padStart(2, "0")).join("");
+                let fet = await fetch("/api/shadowPassRegister", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        username: usernameField.value,
+                        pubkey: ab2h(pubkey)
+                    }),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                });
+                closeOverlayWithError(fet.ok ? undefined : "Не удалось зарегистрироваться потому что: " + fet.status + " (" + fet.statusText + ")\n" + (await fet.text()));
+                if (fet.ok) location.href = "/login";
+            }
+        </script>
+    </body>
+</html>

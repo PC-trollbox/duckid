@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>DuckID for Development</title>
+        <link rel="stylesheet" href="/style.css">
+        <meta name="description" content="Develop applications in DuckID">
+    </head>
+    <body class="dev">
+        <h1>DuckID Apps</h1>
+        <em>Your favorite way to authenticate.</em> | <a href="/">Main page</a> <a href="/deviceLogon">Device Logon</a> <a href="/manage"><b>Manage DuckID</b></a> <a href="/logout">Log out</a>
+        <hr>
+        <button onclick="addApp()">Add application</button>
+        <hr>
+        <div id="appList"></div>
+        <hr>
+        <em>Once a DSQ is confirmed, it is no longer available for display. Regenerate the DSQ if you need to view another one (that will revoke the previous DSQ).</em>
+        <script>
+            async function refreshAppList() {
+                let appList = document.getElementById("appList");
+                appList.innerHTML = "";
+                let apps = await fetch("/api/devApp");
+                apps = await apps.json();
+                for (let appId in apps) {
+                    let appDiv = document.createElement("div");
+                    let name = document.createElement("span");
+                    let vfid = document.createElement("button");
+                    let toggle = document.createElement("button");
+                    let rotate = document.createElement("button");
+                    let rename = document.createElement("button");
+                    let remove = document.createElement("button");
+
+                    name.innerText = apps[appId].name + " (" + appId.length + "_" + appId.slice(0, 8) + ") | " + (apps[appId].disabled ? "Disabled" : "Enabled");
+
+                    vfid.title = "View full ID";
+                    vfid.innerText = "id";
+                    toggle.innerText = "d*";
+                    toggle.title = "Toggle app on/off";
+                    rotate.innerText = "sq*";
+                    rotate.title = "Rotate DSQ";
+                    rename.innerText = "nm*";
+                    rename.title = "Rename";
+                    remove.innerText = "x";
+
+                    appDiv.className = "keyside";
+                    name.className = "titleside";
+
+                    vfid.onclick = async function() {
+                        return prompt("Full ID", appId);
+                    }
+
+                    toggle.onclick = async function() {
+                        if (!confirm("Are you sure you want to toggle this app? If you disable your app, it will not be able to access its DuckID resources temporarily.")) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/devApps/toggle", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: appId,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Failed to toggle app: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshAppList();
+                    }
+
+                    rotate.onclick = async function() {
+                        if (!confirm("Are you sure you want to rotate the DSQ for this app? The previous DSQ will no longer be usable to create new service logon requests.")) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/devApps/rotate", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: appId,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Failed to rotate DSQ: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        prompt("Write down the new DSQ:", await result.text());
+                        refreshAppList();
+                    }
+
+                    rename.onclick = async function() {
+                        let newname = prompt("Enter a new application name. Use common sense.", apps[appId].name);
+                        if (!newname) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/devApps/rename", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: appId,
+                                name: newname,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Failed to rename app: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshAppList();
+                    }
+
+                    remove.onclick = async function() {
+                        if (!confirm("Are you sure you want to remove this app? If you remove your app, it will not be able to access its DuckID resources anymore, and re-creating the app with the same name will not be an option to access these resources again.")) return;
+                        let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                        confirmBodyReadable = await confirmBodyReadable.text();
+                        let result = await fetch("/api/devApps/remove", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                id: appId,
+                                confirmBodyReadable
+                            })
+                        });
+                        if (!result.ok) return alert("Failed to remove app: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                        refreshAppList();
+                    }
+
+                    appDiv.appendChild(name);
+                    appDiv.appendChild(vfid);
+                    appDiv.appendChild(toggle);
+                    appDiv.appendChild(rotate);
+                    appDiv.appendChild(rename);
+                    appDiv.appendChild(remove);
+                    appList.appendChild(appDiv);
+                }
+            }
+
+            async function addApp() {
+                let name = prompt("Enter application name");
+                if (!name) return;
+                let confirmBodyReadable = await fetch("/api/confirmBodyReadable");
+                confirmBodyReadable = await confirmBodyReadable.text();
+                let result = await fetch("/api/devApp/new", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        confirmBodyReadable
+                    })
+                });
+                if (!result.ok) return alert("Failed to add app: " + result.status + " " + result.statusText + "\n\n" + (await result.text()));
+                prompt("Write down the new Development Secret Quack (DSQ):", await result.text());
+                refreshAppList();
+            }
+            refreshAppList();
+        </script>
+    </body>
+</html>
