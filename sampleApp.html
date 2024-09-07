@@ -9,7 +9,7 @@
         <b>Welcome to DuckID Testing App!</b>
         <br>
         <div id="logonFlow">
-            <span id="statusMessage">To get this over with, just scan the QR below and log in:</span>
+            <span id="statusMessage">To get this over with, just scan the QR below and log in or open duckid.pcprojects.tk/deviceLogon with code <em>loading</em></span>
             <br>
             <img id="qrcode" width="256" height="256">
         </div>
@@ -88,6 +88,7 @@
                         hint.hidden = false;
                     }
                 }, 10000);
+                statusMessage.innerText = "To get this over with, just scan the QR below and log in or open duckid.pcprojects.tk/deviceLogon with code " + result.public;
                 qrURL.searchParams.append("code", result.public);
                 let qr = qrcode(8, "L");
                 qr.addData(qrURL.toString());
