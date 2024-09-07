@@ -677,7 +677,7 @@ app.post("/api/serviceLogonSession", json, function(req, res) {
     if (!user.ownApps.hasOwnProperty(req.body.app)) return res.status(403).send("No such app for this account");
     if (user.ownApps[req.body.app].dsq != req.body.dsq) return res.status(403).send("Invalid DSQ");
     if (user.ownApps[req.body.app].disabled) return res.status(403).send("This application is disabled");
-    let deviceCode = crypto.randomBytes(16).toString("hex");
+    let deviceCode = crypto.randomBytes(8).toString("hex");
     let deviceReadingCode = crypto.randomBytes(64).toString("hex");
     logonSessions["pub" + deviceCode] = {
         application: { id: req.body.app, name: user.ownApps[req.body.app].name, dev: token },
