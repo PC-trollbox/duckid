@@ -10,12 +10,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "base32": "^0.0.7",
     "cbor-web": "^9.0.2",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "fido2-lib": "^3.5.3",
+    "hi-base32": "^0.5.1",
     "tweetnacl": "^1.0.3"
   }
 }
