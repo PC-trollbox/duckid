@@ -3,6 +3,7 @@ const express = require("express");
 const fidolib = require("fido2-lib");
 const cookieParser = require("cookie-parser");
 const tweetnacl = require("tweetnacl");
+// const cors = require("cors"); // No CORS usage yet
 const db = require("./db");
 const fs = require("fs");
 const app = express();
@@ -13,54 +14,38 @@ let brChallenges = {};
 let json = express.json();
 
 function requireLogon(req, res, next) {
-    if (!db.tokenDB.has(req.cookies.token)) {
+    let usedToken = req.query.insecure_token || req.headers.authorization.match(/[a-f0-9]{64}/) || req.cookies.token;
+    if (usedToken instanceof Array) usedToken = usedToken[0];
+    req.usedToken = usedToken;
+    if (!db.tokenDB.has(usedToken)) {
         res.clearCookie("token");
-        res.cookie("wantedPage", req.originalUrl, {
-            maxAge: 1000 * 60 * 3
-        });
         return res.redirect("/login");
     }
-    let user = db.tokenDB.get(req.cookies.token);
+    let user = db.tokenDB.get(usedToken);
     let userInfo = db.primaryDB.get(user);
     if (userInfo.disableStatus) {
         res.clearCookie("token");
-        res.cookie("wantedPage", req.originalUrl, {
-            maxAge: 1000 * 60 * 3
-        });
         return res.redirect("/login");
-    }
-    if (req.cookies.wantedPage) {
-        let page = req.cookies.wantedPage;
-        res.clearCookie("wantedPage");
-        return res.redirect(page);
     }
     req.user = user;
     next();
 }
 
 function requireNonServiceLogon(req, res, next) {
-    if (!db.tokenDB.has(req.cookies.token)) {
+    let usedToken = req.query.insecure_token || req.headers.authorization.match(/[a-f0-9]{64}/) || req.cookies.token;
+    if (usedToken instanceof Array) usedToken = usedToken[0];
+    req.usedToken = usedToken;
+    if (!db.tokenDB.has(usedToken)) {
         res.clearCookie("token");
-        res.cookie("wantedPage", req.originalUrl, {
-            maxAge: 1000 * 60 * 3
-        });
         return res.redirect("/login");
     }
-    let user = db.tokenDB.get(req.cookies.token);
+    let user = db.tokenDB.get(usedToken);
     let userInfo = db.primaryDB.get(user);
     if (userInfo.disableStatus) {
         res.clearCookie("token");
-        res.cookie("wantedPage", req.originalUrl, {
-            maxAge: 1000 * 60 * 3
-        });
         return res.redirect("/login");
     }
-    if (userInfo.token != req.cookies.token) return res.redirect("/login");
-    if (req.cookies.wantedPage) {
-        let page = req.cookies.wantedPage;
-        res.clearCookie("wantedPage");
-        return res.redirect(page);
-    }
+    if (userInfo.token != usedToken) return res.redirect("/login");
     req.user = user;
     next();
 }
@@ -69,7 +54,7 @@ let ab2h = (buffer) => Array.from(new Uint8Array(buffer)).map(a => a.toString(16
 let h2u8 = (hex) => Uint8Array.from(hex.match(/.{1,2}/g), c => parseInt(c, 16));
 
 function requireNoLogon(req, res, next) {
-    if (req.cookies.token) return res.redirect("/manage");
+    if (req.query.insecure_token || req.headers.authorization.match(/[a-f0-9]{64}/) || req.cookies.token) return res.redirect("/manage");
     next();
 }
 
@@ -153,7 +138,7 @@ app.get("/api/data", requireLogon, function(req, res) {
     if (!req.query.app) return res.status(400).send("Missing app ID");
     let userInfo = db.primaryDB.get(req.user);
     if (!userInfo.apps.hasOwnProperty(req.query.app)) return res.status(404).send("App not found");
-    if (userInfo.apps[req.query.app].token != req.cookies.token) return res.status(401).send("Invalid token");
+    if (userInfo.apps[req.query.app].token != req.usedToken) return res.status(401).send("Invalid token");
     let appDev = db.appDB.get(req.query.app);
     if (!appDev) return res.status(404).send("This app doesn't exist anymore");
     appDev = db.primaryDB.get(db.appDB.get(req.query.app));
@@ -167,7 +152,7 @@ app.post("/api/data", requireLogon, json, function(req, res) {
     if (!req.body.app) return res.status(400).send("Missing app ID");
     let userInfo = db.primaryDB.get(req.user);
     if (!userInfo.apps.hasOwnProperty(req.body.app)) return res.status(404).send("App not found");
-    if (userInfo.apps[req.body.app].token != req.cookies.token) return res.status(401).send("Invalid token");
+    if (userInfo.apps[req.body.app].token != req.usedToken) return res.status(401).send("Invalid token");
     let appDev = db.appDB.get(req.body.app);
     if (!appDev) return res.status(404).send("This app doesn't exist anymore");
     appDev = db.primaryDB.get(db.appDB.get(req.body.app));
@@ -183,7 +168,7 @@ app.get("/api/selfRemove", requireLogon, function(req, res) {
     if (!req.query.app) return res.status(400).send("Missing app ID");
     let userInfo = db.primaryDB.get(req.user);
     if (!userInfo.apps.hasOwnProperty(req.query.app)) return res.status(404).send("App not found");
-    if (userInfo.apps[req.query.app].token != req.cookies.token) return res.status(401).send("Invalid token");
+    if (userInfo.apps[req.query.app].token != req.usedToken) return res.status(401).send("Invalid token");
     db.tokenDB.remove(userInfo.apps[req.query.app].token);
     delete userInfo.apps[req.query.app];
     db.primaryDB.set(req.user, userInfo);
@@ -685,10 +670,15 @@ app.post("/api/serviceLogonSession", json, function(req, res) {
         redirectURL: req.body.redirectURL || (req.protocol + "://" + req.get("host") + "/serviceLogonSuccess"),
         forSecure: deviceReadingCode
     };
+    let timeout = setTimeout(function() {
+        delete logonSessions["pub" + deviceCode];
+        delete logonSessions["pri" + deviceReadingCode];
+    }, 32768);
     logonSessions["pri" + deviceReadingCode] = {
         for: deviceCode,
         finished: false,
-        logonInfo: {}
+        logonInfo: {},
+        _timeout: timeout
     };
     res.json({
         public: deviceCode,
@@ -698,14 +688,34 @@ app.post("/api/serviceLogonSession", json, function(req, res) {
 
 app.post("/api/serviceLogonGet", json, function(req, res) {
     if (!req.body.deviceCode) return res.status(400).send("Device code missing");
+    if (!req.body.deviceCode.startsWith("pri") && !req.body.deviceCode.startsWith("pub")) return res.status(400).send("Must be a valid structured code");
     if (!logonSessions.hasOwnProperty(req.body.deviceCode)) return res.status(401).send("Invalid device code");
     let result = structuredClone(logonSessions[req.body.deviceCode]);
+    let publicCode = req.body.deviceCode.startsWith("pub") ? req.body.deviceCode : ("pub" + result.for);
+    let privateCode = req.body.deviceCode.startsWith("pri") ? req.body.deviceCode : ("pri" + result.forSecure);
     delete result.forSecure;
+    clearTimeout(result._timeout);
+    logonSessions[req.body.deviceCode]._timeout = setTimeout(function() {
+        delete logonSessions[publicCode];
+        delete logonSessions[privateCode];
+    });
+    delete result._timeout;
     if (result.finished) {
-        delete logonSessions["pub" + result.for];
-        delete logonSessions[req.body.deviceCode];
+        delete logonSessions[publicCode];
+        delete logonSessions[privateCode];
     }
     res.json(result);
+});
+
+app.get("/api/serviceLogonCancel", json, function(req, res) {
+    if (!req.body.deviceCode) return res.status(400).send("Device code missing");
+    if (!req.body.deviceCode.startsWith("pri")) return res.status(401).send("Must be a private code");
+    if (!logonSessions.hasOwnProperty(req.body.deviceCode)) return res.status(401).send("Invalid device code");
+    let session = logonSessions[req.body.deviceCode];
+    clearTimeout(session._timeout);
+    delete logonSessions["pub" + session.for];
+    delete logonSessions[req.body.deviceCode];
+    res.send("OK");
 });
 
 app.use(function(req, res) { // Point of 404 (no pages past this point)
@@ -715,7 +725,8 @@ app.use(function(req, res) { // Point of 404 (no pages past this point)
 })
 
 app.use(function(err, req, res, next) {
-    res.status(500).send("Something vent wrong.");
+    console.error(err);
+    res.status(500).send("Something vent wrong. Some information was logged.");
 });
 
 app.listen(3942, () => console.log("Listening on port 3942"));

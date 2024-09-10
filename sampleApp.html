@@ -82,7 +82,11 @@
                         document.cookie = tokenCookieExtract;
                         onkeydown = function(e) {
                             if (e.key == "Enter") {
-                                location.reload();
+                                onkeydown = null;
+                                hint.hidden = true;
+                                logonStatus.hidden = true;
+                                logonFlow.hidden = false;
+                                runLogonSession();
                             }
                         }
                         hint.hidden = false;
