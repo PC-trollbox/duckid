@@ -18,7 +18,7 @@
         </div>
         <script>
             function openDeviceCode() {
-                location.href = "/serviceLogon?code=" + encodeURIComponent(document.getElementById("deviceCode").value);
+                location.href = "/serviceLogon?code=" + encodeURIComponent(document.getElementById("deviceCode").value.trim());
             }
         </script>
     </body>

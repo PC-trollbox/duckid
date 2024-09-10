@@ -14,8 +14,7 @@ let brChallenges = {};
 let json = express.json();
 
 function requireLogon(req, res, next) {
-    let usedToken = req.query.insecure_token || req.headers.authorization.match(/[a-f0-9]{64}/) || req.cookies.token;
-    if (usedToken instanceof Array) usedToken = usedToken[0];
+    let usedToken = req.query.insecure_token || req.headers.authorization?.replace("Bearer ", "") || req.cookies.token;
     req.usedToken = usedToken;
     if (!db.tokenDB.has(usedToken)) {
         res.clearCookie("token");
@@ -32,8 +31,7 @@ function requireLogon(req, res, next) {
 }
 
 function requireNonServiceLogon(req, res, next) {
-    let usedToken = req.query.insecure_token || req.headers.authorization.match(/[a-f0-9]{64}/) || req.cookies.token;
-    if (usedToken instanceof Array) usedToken = usedToken[0];
+    let usedToken = req.query.insecure_token || req.headers.authorization?.replace("Bearer ", "") || req.cookies.token;
     req.usedToken = usedToken;
     if (!db.tokenDB.has(usedToken)) {
         res.clearCookie("token");
@@ -45,7 +43,10 @@ function requireNonServiceLogon(req, res, next) {
         res.clearCookie("token");
         return res.redirect("/login");
     }
-    if (userInfo.token != usedToken) return res.redirect("/login");
+    if (userInfo.token != usedToken) {
+        res.clearCookie("token");
+        return res.redirect("/login");
+    }
     req.user = user;
     next();
 }
@@ -54,7 +55,7 @@ let ab2h = (buffer) => Array.from(new Uint8Array(buffer)).map(a => a.toString(16
 let h2u8 = (hex) => Uint8Array.from(hex.match(/.{1,2}/g), c => parseInt(c, 16));
 
 function requireNoLogon(req, res, next) {
-    if (req.query.insecure_token || req.headers.authorization.match(/[a-f0-9]{64}/) || req.cookies.token) return res.redirect("/manage");
+    if (req.query.insecure_token || req.headers.authorization?.replace("Bearer ", "") || req.cookies.token) return res.redirect("/manage");
     next();
 }
 
@@ -690,7 +691,7 @@ app.post("/api/serviceLogonGet", json, function(req, res) {
     if (!req.body.deviceCode) return res.status(400).send("Device code missing");
     if (!req.body.deviceCode.startsWith("pri") && !req.body.deviceCode.startsWith("pub")) return res.status(400).send("Must be a valid structured code");
     if (!logonSessions.hasOwnProperty(req.body.deviceCode)) return res.status(401).send("Invalid device code");
-    let result = structuredClone(logonSessions[req.body.deviceCode]);
+    let result = { ...logonSessions[req.body.deviceCode] };
     let publicCode = req.body.deviceCode.startsWith("pub") ? req.body.deviceCode : ("pub" + result.for);
     let privateCode = req.body.deviceCode.startsWith("pri") ? req.body.deviceCode : ("pri" + result.forSecure);
     delete result.forSecure;
@@ -698,7 +699,7 @@ app.post("/api/serviceLogonGet", json, function(req, res) {
     logonSessions[req.body.deviceCode]._timeout = setTimeout(function() {
         delete logonSessions[publicCode];
         delete logonSessions[privateCode];
-    });
+    }, 32768);
     delete result._timeout;
     if (result.finished) {
         delete logonSessions[publicCode];

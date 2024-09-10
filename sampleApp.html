@@ -64,6 +64,7 @@
                         let tokenCookieExtract = document.cookie.match(/token=[0-9a-f]+/) || "";
                         if (tokenCookieExtract) tokenCookieExtract = tokenCookieExtract[0];
                         document.cookie = "token=" + check.logonInfo.appToken;
+                        api2URL.searchParams.delete("app");
                         api2URL.searchParams.append("app", appID);
                         let dataStorage = await fetch(api2URL.toString());
                         dataStorage = await dataStorage.json();
@@ -93,6 +94,7 @@
                     }
                 }, 10000);
                 statusMessage.innerText = "To get this over with, just scan the QR below and log in or open duckid.pcprojects.tk/deviceLogon with code " + result.public;
+                qrURL.searchParams.delete("code");
                 qrURL.searchParams.append("code", result.public);
                 let qr = qrcode(8, "L");
                 qr.addData(qrURL.toString());
