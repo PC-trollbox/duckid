@@ -135,6 +135,30 @@ app.post("/api/apps/remove", requireNonServiceLogon, json, bodyCBR, function(req
     res.send("OK");
 })
 
+app.get("/api/ping", requireLogon, function(req, res) {
+    if (!req.query.app) return res.status(400).send("Missing app ID");
+    let userInfo = db.primaryDB.get(req.user);
+    if (!userInfo.apps.hasOwnProperty(req.query.app)) return res.status(404).send("App not found");
+    if (userInfo.apps[req.query.app].token != req.usedToken) return res.status(401).send("Invalid token");
+    let appDev = db.appDB.get(req.query.app);
+    if (!appDev) return res.status(404).send("This app doesn't exist anymore");
+    appDev = db.primaryDB.get(db.appDB.get(req.query.app));
+    if (appDev.disableStatus) return res.status(403).send("The developer's account has been disabled");
+    appDev = appDev.ownApps[req.query.app];
+    if (appDev.disabled) return res.status(403).send("This application is disabled");
+    res.status(204).end();
+});
+
+app.get("/api/pingAppDeveloper", requireLogon, function(req, res) {
+    if (!req.query.app) return res.status(400).send("Missing app ID");
+    let userInfo = db.primaryDB.get(req.user);
+    if (!userInfo.ownApps.hasOwnProperty(req.query.app)) return res.status(404).send("App not found");
+    if (userInfo.ownApps[req.query.app].dsq != req.usedToken) return res.status(401).send("Invalid token");
+    if (userInfo.disableStatus) return res.status(403).send("The developer's account has been disabled");
+    if (userInfo.ownApps[req.query.app].disabled) return res.status(403).send("This application is disabled");
+    res.status(204).end();
+});
+
 app.get("/api/data", requireLogon, function(req, res) {
     if (!req.query.app) return res.status(400).send("Missing app ID");
     let userInfo = db.primaryDB.get(req.user);
